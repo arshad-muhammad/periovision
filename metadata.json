@@ -1,0 +1,7 @@
+{
+  "name": "Copy of MedScan AI: Advanced Imaging Analysis",
+  "description": "A professional AI-driven platform for analyzing medical and dental diagnostic images including X-rays, OPGs, and CT scans.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
