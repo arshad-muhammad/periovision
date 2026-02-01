@@ -1,5 +1,5 @@
 
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { Annotation, AIFinding } from '../types';
 
 interface InteractiveCanvasProps {
@@ -11,19 +11,36 @@ interface InteractiveCanvasProps {
 }
 
 const severityColors = {
-  'Normal': '#10b981',   // emerald-500
-  'Mild': '#10b981',     // emerald-500
-  'Moderate': '#f59e0b', // amber-500
-  'Severe': '#ef4444',   // red-500
-  'Critical': '#7f1d1d'  // red-900
+  'Normal': '#10b981',
+  'Mild': '#10b981',
+  'Moderate': '#f59e0b',
+  'Severe': '#ef4444',
+  'Critical': '#7f1d1d'
 };
 
 const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({ imageSrc, annotations, aiFindings = [], onAddAnnotation, onClear }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
+  
   const [isDrawing, setIsDrawing] = useState(false);
   const [startPos, setStartPos] = useState<{ x: number; y: number } | null>(null);
   const [currentPos, setCurrentPos] = useState<{ x: number; y: number } | null>(null);
+  const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
+  const [isHovering, setIsHovering] = useState(false);
+
+  // Resize handling
+  useEffect(() => {
+    const handleResize = () => {
+      if (canvasRef.current && containerRef.current) {
+        canvasRef.current.width = containerRef.current.clientWidth;
+        canvasRef.current.height = containerRef.current.clientHeight;
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    handleResize(); // Initial call
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -34,97 +51,126 @@ const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({ imageSrc, annotat
     const draw = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
-      // 1. Draw AI Findings (Spatial Annotations)
+      // 1. Draw Global Precision Grid (Faint)
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 10; i++) {
+        const x = (i / 10) * canvas.width;
+        const y = (i / 10) * canvas.height;
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+      }
+
+      // 2. Draw AI Findings with Enhanced Precision Style
       aiFindings.forEach(finding => {
         const color = severityColors[finding.severity] || '#3b82f6';
         ctx.strokeStyle = color;
         ctx.fillStyle = color;
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 2;
         
-        // Coordinates in 0-1000 scale
         const [ymin, xmin, ymax, xmax] = finding.box_2d;
         const x = (xmin / 1000) * canvas.width;
         const y = (ymin / 1000) * canvas.height;
         const width = ((xmax - xmin) / 1000) * canvas.width;
         const height = ((ymax - ymin) / 1000) * canvas.height;
 
-        // Draw bounding box
-        ctx.setLineDash([]);
-        ctx.strokeRect(x, y, width, height);
-        
-        // Draw label background
-        const labelText = `${finding.label} (${finding.severity})`;
-        ctx.font = 'bold 11px Inter';
-        const labelWidth = ctx.measureText(labelText).width;
-        ctx.fillRect(x, y - 20, labelWidth + 10, 20);
-        
-        // Draw label text
-        ctx.fillStyle = '#ffffff';
-        ctx.fillText(labelText, x + 5, y - 6);
+        // Draw Corner Brackets instead of full box for "Tech Precision" look
+        const b = 15; // bracket size
+        ctx.beginPath();
+        // TL
+        ctx.moveTo(x + b, y); ctx.lineTo(x, y); ctx.lineTo(x, y + b);
+        // TR
+        ctx.moveTo(x + width - b, y); ctx.lineTo(x + width, y); ctx.lineTo(x + width, y + b);
+        // BL
+        ctx.moveTo(x, y + height - b); ctx.lineTo(x, y + height); ctx.lineTo(x + b, y + height);
+        // BR
+        ctx.moveTo(x + width - b, y + height); ctx.lineTo(x + width, y + height); ctx.lineTo(x + width, y + height - b);
+        ctx.stroke();
 
-        // Subtle overlay
-        ctx.fillStyle = `${color}22`; // 22 is hex for ~13% opacity
+        // Draw Central Target Crosshair
+        const cx = x + width/2;
+        const cy = y + height/2;
+        ctx.beginPath();
+        ctx.moveTo(cx - 5, cy); ctx.lineTo(cx + 5, cy);
+        ctx.moveTo(cx, cy - 5); ctx.lineTo(cx, cy + 5);
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // Label Panel
+        const labelText = `${finding.label.toUpperCase()} [${finding.severity}]`;
+        ctx.font = 'black 9px Inter';
+        const labelWidth = ctx.measureText(labelText).width;
+        ctx.globalAlpha = 0.9;
+        ctx.fillRect(x, y - 18, labelWidth + 12, 18);
+        ctx.globalAlpha = 1.0;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(labelText, x + 6, y - 6);
+
+        // Highlight
+        ctx.fillStyle = `${color}15`;
         ctx.fillRect(x, y, width, height);
       });
 
-      // 2. Draw Manual Annotations (Measurements)
-      ctx.strokeStyle = '#3b82f6';
+      // 3. Draw Manual Measurements
+      ctx.strokeStyle = '#6366f1';
       ctx.lineWidth = 2;
-      ctx.font = 'bold 12px Inter';
-      ctx.fillStyle = '#3b82f6';
+      ctx.font = 'bold 11px Inter';
+      ctx.fillStyle = '#6366f1';
 
       annotations.forEach(ann => {
         if (ann.type === 'line' && ann.x2 !== undefined && ann.y2 !== undefined) {
-          ctx.setLineDash([]);
           ctx.beginPath();
           ctx.moveTo(ann.x1, ann.y1);
           ctx.lineTo(ann.x2, ann.y2);
           ctx.stroke();
           
           const dist = Math.sqrt(Math.pow(ann.x2 - ann.x1, 2) + Math.pow(ann.y2 - ann.y1, 2)).toFixed(1);
-          ctx.fillText(`${ann.label}: ${dist}px`, ann.x1, ann.y1 - 8);
+          ctx.fillRect(ann.x1, ann.y1 - 25, 70, 20);
+          ctx.fillStyle = 'white';
+          ctx.fillText(`${dist}px`, ann.x1 + 8, ann.y1 - 11);
+          ctx.fillStyle = '#6366f1';
           
-          ctx.beginPath();
-          ctx.arc(ann.x1, ann.y1, 3, 0, Math.PI * 2);
-          ctx.arc(ann.x2, ann.y2, 3, 0, Math.PI * 2);
-          ctx.fill();
+          ctx.beginPath(); ctx.arc(ann.x1, ann.y1, 4, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.arc(ann.x2, ann.y2, 4, 0, Math.PI * 2); ctx.fill();
         }
       });
 
-      // 3. Draw Active Drawing Line
+      // 4. Draw Active Drawing or Hover Crosshair
       if (isDrawing && startPos && currentPos) {
-        ctx.strokeStyle = '#3b82f6';
-        ctx.setLineDash([5, 5]);
+        ctx.strokeStyle = '#6366f1';
+        ctx.setLineDash([4, 4]);
         ctx.beginPath();
         ctx.moveTo(startPos.x, startPos.y);
         ctx.lineTo(currentPos.x, currentPos.y);
         ctx.stroke();
         ctx.setLineDash([]);
-        
-        const currentDist = Math.sqrt(Math.pow(currentPos.x - startPos.x, 2) + Math.pow(currentPos.y - startPos.y, 2)).toFixed(1);
-        ctx.fillText(`${currentDist}px`, currentPos.x + 5, currentPos.y + 5);
+      } else if (isHovering && mousePos) {
+        // High-precision mouse crosshairs
+        ctx.strokeStyle = 'rgba(99, 102, 241, 0.3)';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(mousePos.x, 0); ctx.lineTo(mousePos.x, canvas.height); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, mousePos.y); ctx.lineTo(canvas.width, mousePos.y); ctx.stroke();
       }
     };
 
-    draw();
-  }, [annotations, aiFindings, isDrawing, currentPos, startPos]);
+    const animFrame = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(animFrame);
+  }, [annotations, aiFindings, isDrawing, currentPos, startPos, mousePos, isHovering]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    setStartPos({ x, y });
+    setStartPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
     setIsDrawing(true);
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDrawing) return;
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    setCurrentPos({ x, y });
+    setMousePos({ x, y });
+    if (isDrawing) setCurrentPos({ x, y });
   };
 
   const handleMouseUp = () => {
@@ -133,12 +179,8 @@ const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({ imageSrc, annotat
       if (dist > 5) {
         onAddAnnotation({
           id: Math.random().toString(36).substr(2, 9),
-          type: 'line',
-          x1: startPos.x,
-          y1: startPos.y,
-          x2: currentPos.x,
-          y2: currentPos.y,
-          label: 'Measurement'
+          type: 'line', x1: startPos.x, y1: startPos.y, x2: currentPos.x, y2: currentPos.y,
+          label: 'MEASURE'
         });
       }
     }
@@ -147,31 +189,62 @@ const InteractiveCanvas: React.FC<InteractiveCanvasProps> = ({ imageSrc, annotat
     setCurrentPos(null);
   };
 
+  // Magnifier Logic
+  const magnifierSize = 160;
+  const zoomFactor = 2.5;
+
   return (
-    <div className="relative w-full rounded-3xl overflow-hidden border border-slate-200 bg-slate-950 group shadow-2xl shadow-slate-200" ref={containerRef}>
-      <img src={imageSrc} className="w-full h-auto block opacity-80" alt="Scan Viewer" />
+    <div 
+      className="relative w-full rounded-[2.5rem] overflow-hidden border border-slate-200 bg-slate-950 group shadow-2xl transition-all duration-700" 
+      ref={containerRef}
+      onMouseEnter={() => setIsHovering(true)}
+      onMouseLeave={() => { setIsHovering(false); setMousePos(null); }}
+    >
+      <img ref={imageRef} src={imageSrc} className="w-full h-auto block opacity-90 transition-opacity group-hover:opacity-100" alt="Diagnostic Content" />
+      
       <canvas
         ref={canvasRef}
-        width={containerRef.current?.clientWidth || 800}
-        height={containerRef.current?.clientHeight || 600}
-        className="absolute top-0 left-0 w-full h-full cursor-crosshair z-10"
+        className="absolute top-0 left-0 w-full h-full cursor-none z-10"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
       />
       
-      {/* Overlay controls */}
-      <div className="absolute bottom-6 left-6 flex gap-3 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+      {/* Magnifier Lens */}
+      {isHovering && mousePos && !isDrawing && (
+        <div 
+          className="absolute z-30 pointer-events-none rounded-full border-4 border-white/20 shadow-2xl overflow-hidden ring-4 ring-indigo-500/30"
+          style={{
+            width: magnifierSize,
+            height: magnifierSize,
+            left: mousePos.x - magnifierSize / 2,
+            top: mousePos.y - magnifierSize / 2,
+            backgroundImage: `url(${imageSrc})`,
+            backgroundRepeat: 'no-repeat',
+            backgroundSize: `${(containerRef.current?.clientWidth || 0) * zoomFactor}px auto`,
+            backgroundPosition: `-${mousePos.x * zoomFactor - magnifierSize / 2}px -${mousePos.y * zoomFactor - magnifierSize / 2}px`
+          }}
+        >
+          {/* Inner Magnifier Crosshair */}
+          <div className="absolute inset-0 flex items-center justify-center opacity-40">
+            <div className="w-px h-full bg-indigo-400"></div>
+            <div className="h-px w-full bg-indigo-400 absolute"></div>
+          </div>
+        </div>
+      )}
+
+      {/* Interface Overlay */}
+      <div className="absolute bottom-8 left-8 flex gap-4 z-20 opacity-0 group-hover:opacity-100 transition-all duration-500 transform translate-y-4 group-hover:translate-y-0">
         <button 
           onClick={(e) => { e.stopPropagation(); onClear(); }} 
-          className="px-4 py-2 bg-white/10 backdrop-blur-md text-white border border-white/20 text-xs font-bold rounded-xl shadow-lg hover:bg-white/20 transition-all flex items-center gap-2"
+          className="px-6 py-3 bg-slate-900/80 backdrop-blur-xl text-white border border-white/10 text-[10px] font-black uppercase tracking-widest rounded-2xl shadow-2xl hover:bg-rose-600 transition-all flex items-center gap-3"
         >
-          <i className="fa-solid fa-eraser"></i> Clear Markers
+          <i className="fa-solid fa-microscope text-xs"></i> Reset Visuals
         </button>
       </div>
 
-      <div className="absolute top-6 right-6 bg-blue-600/80 backdrop-blur-md text-white text-[10px] px-3 py-1.5 rounded-full font-bold uppercase tracking-wider shadow-lg z-20 pointer-events-none">
-        <i className="fa-solid fa-crosshairs mr-2"></i> Precision Mode Active
+      <div className="absolute top-8 right-8 bg-indigo-600 text-white text-[9px] px-4 py-2 rounded-xl font-black uppercase tracking-[0.2em] shadow-2xl z-20 pointer-events-none border border-indigo-400/30">
+        <span className="flex items-center gap-2"><i className="fa-solid fa-crosshairs animate-pulse"></i> Ultra Precision [X{zoomFactor}]</span>
       </div>
     </div>
   );

@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import Header from './components/Header';
 import AnalysisResult from './components/AnalysisResult';
@@ -16,6 +15,7 @@ const App: React.FC = () => {
   const [progressMessage, setProgressMessage] = useState<string>('');
   
   const [clinicalData, setClinicalData] = useState<ClinicalData>({
+    modality: 'Dental',
     patientName: '',
     patientId: '',
     bop: 0,
@@ -166,7 +166,7 @@ const App: React.FC = () => {
                   </h4>
                   <ul className="space-y-8">
                     {[
-                      { icon: 'fa-brain', title: 'PerioVision Neural Engine', desc: 'Custom trained biological pattern recognition.' },
+                      { icon: 'fa-brain', title: 'RadioXprecision Neural Engine', desc: 'Custom trained biological pattern recognition.' },
                       { icon: 'fa-crosshairs', title: 'Spatial Calibration', desc: 'Precision coordinate mapping for anatomical structures.' },
                       { icon: 'fa-shield-halved', title: 'HIPAA Layer-3 Security', desc: 'End-to-end encryption for sensitive diagnostic data.' }
                     ].map((item, i) => (
@@ -263,7 +263,7 @@ const App: React.FC = () => {
               <i className="fa-solid fa-eye text-3xl"></i>
             </div>
             <div className="flex flex-col">
-              <span className="text-4xl font-black tracking-tighter uppercase leading-none">PerioVision</span>
+              <span className="text-4xl font-black tracking-tighter uppercase leading-none">RadioXprecision</span>
               <span className="text-[11px] font-black text-indigo-400 uppercase tracking-[0.4em] mt-2">Professional Imaging Solutions</span>
             </div>
           </div>
@@ -275,7 +275,7 @@ const App: React.FC = () => {
             <span className="hover:text-white cursor-pointer transition-colors">Support Lab</span>
           </div>
           <p className="mt-20 text-slate-600 text-[10px] font-bold uppercase tracking-widest">
-            © {new Date().getFullYear()} PerioVision Intelligent Systems. All rights reserved.
+            © {new Date().getFullYear()} RadioXprecision Intelligent Systems. All rights reserved.
           </p>
         </div>
       </footer>

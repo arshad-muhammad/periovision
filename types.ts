@@ -6,6 +6,8 @@ export enum AnalysisStatus {
   ERROR = 'ERROR'
 }
 
+export type ModalityType = 'Dental' | 'MRI' | 'CT/X-Ray';
+
 export interface Annotation {
   id: string;
   type: 'line' | 'point' | 'ai_box';
@@ -18,12 +20,22 @@ export interface Annotation {
 }
 
 export interface ClinicalData {
+  modality: ModalityType;
   patientName: string;
   patientId: string;
-  bop: number;
-  pocketDepths: string;
+  // Dental specific
+  bop?: number;
+  pocketDepths?: string;
   smokingStatus: 'Never' | 'Former' | 'Current';
   diabetic: boolean;
+  // MRI specific
+  complaint?: string;
+  location?: string;
+  hasImplants?: boolean;
+  // CT/X-Ray specific
+  indication?: string;
+  contrastUsed?: boolean;
+  previousSurgery?: boolean;
 }
 
 export interface AIFinding {
@@ -43,6 +55,8 @@ export interface AnalysisOutput {
   recommendations: string[];
   limitations: string[];
   disclaimer: string;
+  // High-precision parameters specific to the modality
+  technicalParameters: Record<string, string>;
 }
 
 export interface ImagingFile {

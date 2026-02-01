@@ -3,45 +3,45 @@ import { GoogleGenAI } from "@google/genai";
 import { AnalysisOutput, ClinicalData } from "./types";
 
 const SYSTEM_INSTRUCTION = `
-You are an advanced medical and dental imaging annotation AI.
-Your role is to perform a systematic analysis of radiographic scans.
+You are the RadioXprecision Core—a world-class medical diagnostic intelligence engine.
+Your objective is to provide high-precision, evidence-based radiographic analysis while strictly avoiding clinical hallucination.
 
-Follow these steps for every analysis:
+### PROTOCOL FOR ACCURACY:
+1. ONLY report findings that are visually verifiable in the provided pixels.
+2. CORRELATE visuals with the provided Clinical Context but do not invent symptoms.
+3. Use strict clinical terminology (e.g., "Radiolucency" instead of "Dark spot").
+4. **SPATIAL PRECISION**: Coordinates must be pinpoint accurate. If a finding is a small point, the box should be tight. If it's an area, the box must encompass the entire pathological perimeter.
 
-Step 1: Identify Image Type & Region
-- Determine if Dental (IOPA, OPG, CBCT), MRI, CT, or X-ray. Identify anatomical region.
+### MODALITY-SPECIFIC PARAMETERS (technicalParameters):
+Populate the 'technicalParameters' object with specific metrics relevant to the modality:
+- DENTAL: Include 'Tooth Numbering (Universal)', 'Bone Loss %', 'Crestal Lamina Dura status', 'Furcation Grade'.
+- MRI: Include 'Sequence Type (Estimate)', 'Signal Intensity', 'Anatomical Plane', 'Motion Artifact Level'.
+- CT/X-RAY: Include 'Estimated Density (HU/Relative)', 'Cortical Integrity', 'Soft Tissue contrast level'.
 
-Step 2: Visual Detection & Spatial Marking
-- Detect abnormalities: Caries, bone loss, periapical lesions, fractures, tumors, edema, disc herniation, etc.
-- For each finding, provide normalized coordinates [ymin, xmin, ymax, xmax] in the range of 0 to 1000.
-
-Step 3: Severity Coding
-- Normal/Mild (Green)
-- Moderate (Yellow)
-- Severe/Critical (Red)
-
-Step 4: JSON Output Requirement
-Return a JSON object with the following structure:
+### OUTPUT SCHEMA (JSON ONLY):
 {
-  "imagingType": "String (e.g., OPG Dental Scan)",
+  "imagingType": "Precise nomenclature (e.g., T2-weighted MRI Brain Axial)",
   "findings": [
     {
-      "label": "Short Clinical Label",
-      "description": "Brief description",
+      "label": "Short Clinical Term",
+      "description": "Evidence-based descriptive detail",
       "severity": "Normal | Mild | Moderate | Severe | Critical",
       "box_2d": [ymin, xmin, ymax, xmax]
     }
   ],
-  "measurements": ["Specific metric 1", "Specific metric 2"],
-  "diagnosis": "Primary clinical diagnosis",
+  "technicalParameters": {
+     "Key Metric Name": "Precise Value/Observation"
+  },
+  "measurements": ["Metric with units, e.g., 4.2mm vertical bone loss"],
+  "diagnosis": "Synthesized diagnosis with degree of certainty",
   "riskLevel": "Low | Medium | High",
   "prognosis": "Good | Fair | Guarded | Poor",
-  "recommendations": ["Action 1", "Action 2"],
-  "limitations": ["Observation quality issues if any"],
-  "disclaimer": "Standard medical disclaimer"
+  "recommendations": ["Direct clinical action items"],
+  "limitations": ["Technical constraints of the image quality"],
+  "disclaimer": "Standardized medical advisory"
 }
 
-Note: Accuracy in box_2d coordinates is critical for visual marking.
+Accuracy in 'box_2d' (0-1000 scale, [ymin, xmin, ymax, xmax]) is non-negotiable for mapping overlay.
 `;
 
 async function fetchWithRetry(fn: () => Promise<any>, retries = 3, delay = 2000): Promise<any> {
@@ -59,9 +59,26 @@ async function fetchWithRetry(fn: () => Promise<any>, retries = 3, delay = 2000)
 export async function analyzeImaging(imageBase64: string, mimeType: string, clinicalData?: ClinicalData): Promise<AnalysisOutput> {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
-  const prompt = `Perform Step 1-6 analysis on this scan. 
-  ${clinicalData ? `Patient: ${clinicalData.patientName}, BoP: ${clinicalData.bop}%, Smoking: ${clinicalData.smokingStatus}, Diabetic: ${clinicalData.diabetic}.` : ''}
-  Ensure all detected pathologies have precise 'box_2d' coordinates.`;
+  const clinicalContext = clinicalData ? `
+  --- CLINICAL CONTEXT ---
+  Modality: ${clinicalData.modality}
+  Patient: ${clinicalData.patientName} (ID: ${clinicalData.patientId})
+  General: Diabetic: ${clinicalData.diabetic}
+  ${clinicalData.modality === 'Dental' ? `
+    Dental Specific: BoP: ${clinicalData.bop}%, Pocket Depths: ${clinicalData.pocketDepths}, Smoking: ${clinicalData.smokingStatus}
+  ` : ''}
+  ${clinicalData.modality === 'MRI' ? `
+    MRI Specific: Complaint: ${clinicalData.complaint}, Location: ${clinicalData.location}, Implants: ${clinicalData.hasImplants}
+  ` : ''}
+  ${clinicalData.modality === 'CT/X-Ray' ? `
+    CT/X-Ray Specific: Indication: ${clinicalData.indication}, Contrast: ${clinicalData.contrastUsed}, Prev Surgery: ${clinicalData.previousSurgery}
+  ` : ''}
+  ` : 'No clinical context provided.';
+
+  const prompt = `Perform high-precision analysis on this ${clinicalData?.modality || 'medical'} image. 
+  ${clinicalContext}
+  Provide verified technical parameters and pinpoint spatial coordinates for all detected pathologies. 
+  The coordinates MUST be sub-pixel accurate within the 0-1000 normalized grid.`;
 
   return await fetchWithRetry(async () => {
     const response = await ai.models.generateContent({
@@ -80,7 +97,14 @@ export async function analyzeImaging(imageBase64: string, mimeType: string, clin
     });
 
     const text = response.text;
-    if (!text) throw new Error("No analysis received from AI.");
-    return JSON.parse(text) as AnalysisOutput;
+    if (!text) throw new Error("Null response from core engine.");
+    try {
+      const parsed = JSON.parse(text);
+      if (!parsed.technicalParameters) parsed.technicalParameters = {};
+      return parsed as AnalysisOutput;
+    } catch (e) {
+      console.error("Diagnostic Parse Error:", text);
+      throw new Error("Diagnostic syntax error in engine output.");
+    }
   });
 }
