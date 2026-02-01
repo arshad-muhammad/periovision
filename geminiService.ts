@@ -82,7 +82,7 @@ export async function analyzeImaging(imageBase64: string, mimeType: string, clin
 
   return await fetchWithRetry(async () => {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-2.5-flash',
       contents: {
         parts: [
           { inlineData: { mimeType, data: imageBase64 } },
